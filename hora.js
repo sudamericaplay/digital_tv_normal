@@ -1,22 +1,12 @@
-/**
- * Hora actual de Argentina en tiempo real.
- * Zona horaria: America/Argentina/Buenos_Aires
- */
 
 (function () {
     "use strict";
 
-    const TIME_ZONE = "America/Argentina/Buenos_Aires";
+    const ZONA_ARGENTINA = "America/Argentina/Buenos_Aires";
 
-    /**
-     * Devuelve la fecha y hora actual de Argentina.
-     */
     function obtenerHoraArgentina() {
         return new Intl.DateTimeFormat("es-AR", {
-            timeZone: TIME_ZONE,
-            year: "numeric",
-            month: "2-digit",
-            day: "2-digit",
+            timeZone: ZONA_ARGENTINA,
             hour: "2-digit",
             minute: "2-digit",
             second: "2-digit",
@@ -24,39 +14,49 @@
         }).format(new Date());
     }
 
-    /**
-     * Muestra la hora dentro de un elemento HTML.
-     *
-     * Ejemplo:
-     * <div id="hora-argentina"></div>
-     */
-    function iniciarRelojArgentina(elementoId = "hora-argentina") {
+    function obtenerFechaArgentina() {
+        return new Intl.DateTimeFormat("es-AR", {
+            timeZone: ZONA_ARGENTINA,
+            weekday: "long",
+            year: "numeric",
+            month: "long",
+            day: "numeric"
+        }).format(new Date());
+    }
+
+    function iniciarHoraArgentina(elementoId = "hora-argentina") {
         const elemento = document.getElementById(elementoId);
 
         if (!elemento) {
-            console.error(
-                `No se encontró un elemento con el ID "${elementoId}".`
-            );
-            return null;
+            console.error(`No existe un elemento con id="${elementoId}"`);
+            return;
         }
 
-        function actualizar() {
-            elemento.textContent = obtenerHoraArgentina();
+        function actualizarHora() {
+            elemento.innerHTML = `
+                <div class="fecha-argentina">${obtenerFechaArgentina()}</div>
+                <div class="reloj-argentina">${obtenerHoraArgentina()}</div>
+            `;
         }
 
-        actualizar();
-
-        return setInterval(actualizar, 1000);
+        actualizarHora();
+        setInterval(actualizarHora, 1000);
     }
 
-    // Disponible globalmente para usarlo desde cualquier página.
     window.obtenerHoraArgentina = obtenerHoraArgentina;
-    window.iniciarRelojArgentina = iniciarRelojArgentina;
+    window.iniciarHoraArgentina = iniciarHoraArgentina;
 
-    // Inicia automáticamente cuando encuentra el elemento.
-    document.addEventListener("DOMContentLoaded", function () {
-        if (document.getElementById("hora-argentina")) {
-            iniciarRelojArgentina("hora-argentina");
+    function iniciarAutomaticamente() {
+        const elemento = document.getElementById("hora-argentina");
+
+        if (elemento) {
+            iniciarHoraArgentina("hora-argentina");
         }
-    });
+    }
+
+    if (document.readyState === "loading") {
+        document.addEventListener("DOMContentLoaded", iniciarAutomaticamente);
+    } else {
+        iniciarAutomaticamente();
+    }
 })();
