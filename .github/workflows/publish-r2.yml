@@ -1,0 +1,119 @@
+name: Publicar APK en Cloudflare R2
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag del release que se publicará (ejemplo: v5.1)"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    env:
+      AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+      AWS_DEFAULT_REGION: auto
+      R2_ENDPOINT: https://${{ secrets.CLOUDFLARE_ACCOUNT_ID }}.r2.cloudflarestorage.com
+      R2_BUCKET: ${{ secrets.R2_BUCKET_NAME }}
+
+    steps:
+      - name: Seleccionar release
+        id: release
+        shell: bash
+        run: |
+          if [[ "${{ github.event_name }}" == "release" ]]; then
+            echo "tag=${{ github.event.release.tag_name }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=${{ inputs.tag }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Descargar APK del release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          mkdir -p release-files
+          gh release download "${{ steps.release.outputs.tag }}" \
+            --repo "${{ github.repository }}" \
+            --pattern "*.apk" \
+            --dir release-files
+
+          mapfile -t apks < <(find release-files -maxdepth 1 -type f -iname "*.apk")
+          if [[ ${#apks[@]} -ne 1 ]]; then
+            echo "El release debe contener exactamente una APK; encontradas: ${#apks[@]}"
+            exit 1
+          fi
+          mv "${apks[0]}" lumix-unified-release.apk
+
+      - name: Leer versión y generar manifiesto
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          AAPT="$(find "$ANDROID_HOME/build-tools" -type f -name aapt | sort -V | tail -1)"
+          if [[ -z "$AAPT" ]]; then
+            echo "No se encontró aapt en el runner"
+            exit 1
+          fi
+
+          BADGING="$("$AAPT" dump badging lumix-unified-release.apk | head -1)"
+          VERSION_CODE="$(sed -n "s/.*versionCode='\([^']*\)'.*/\1/p" <<< "$BADGING")"
+          VERSION_NAME="$(sed -n "s/.*versionName='\([^']*\)'.*/\1/p" <<< "$BADGING")"
+          SHA256="$(sha256sum lumix-unified-release.apk | awk '{print $1}')"
+          NOTES="$(gh release view "${{ steps.release.outputs.tag }}" \
+            --repo "${{ github.repository }}" \
+            --json body --jq '.body // ""')"
+
+          if [[ -z "$VERSION_CODE" || -z "$VERSION_NAME" ]]; then
+            echo "No se pudo leer la versión interna de la APK"
+            exit 1
+          fi
+
+          jq -n \
+            --argjson versionCode "$VERSION_CODE" \
+            --arg versionName "$VERSION_NAME" \
+            --arg apkUrl "https://updates.neoplay.es/lumix-unified-release.apk" \
+            --arg sha256 "$SHA256" \
+            --arg notes "$NOTES" \
+            '{
+              versionCode: $versionCode,
+              versionName: $versionName,
+              apkUrl: $apkUrl,
+              sha256: $sha256,
+              notes: $notes,
+              mandatory: false
+            }' > version.json
+
+          cat version.json
+
+      - name: Subir APK y manifiesto a R2
+        shell: bash
+        run: |
+          aws s3 cp lumix-unified-release.apk \
+            "s3://${R2_BUCKET}/lumix-unified-release.apk" \
+            --endpoint-url "$R2_ENDPOINT" \
+            --content-type "application/vnd.android.package-archive" \
+            --cache-control "no-store"
+
+          aws s3 cp version.json \
+            "s3://${R2_BUCKET}/version.json" \
+            --endpoint-url "$R2_ENDPOINT" \
+            --content-type "application/json; charset=utf-8" \
+            --cache-control "no-store"
+
+      - name: Verificar publicación
+        shell: bash
+        run: |
+          sleep 5
+          curl --fail --silent --show-error \
+            "https://updates.neoplay.es/version.json" > published-version.json
+          test "$(jq -r '.sha256' published-version.json)" = \
+            "$(sha256sum lumix-unified-release.apk | awk '{print $1}')"
+          echo "Publicación verificada correctamente"
