@@ -1,9 +1,10 @@
 {
     "page": "https://www.fctv33hd.pw/es",
     "apiBases": [
+    "https://lumixtv.es/canales/PHPS/stream/fctv-catalog/catalog.php",
     "https://apis-data10.tcllu137fien.ru",
     "https://apis-data-defra10.tcllu137fien.ru"
-    ],
+  ],
     "live": { "statusField": 4, "finishThreshold": 10000 },
     "playerReferer": "https://nadia01eo.tn76degree12ec3out.cfd/",
     "hlsKey": "a7981cc9eb2f4d19dcfea57b101ecd89",
